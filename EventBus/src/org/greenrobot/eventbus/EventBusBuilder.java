@@ -37,6 +37,8 @@ public class EventBusBuilder {
     boolean sendSubscriberExceptionEvent = true;
     boolean sendNoSubscriberEvent = true;
     boolean throwSubscriberException;
+
+    // TODO: 2018/5/24 eventbus会考虑事件的超类 设为false只会考虑此类本省 超类不会作为事件发送 
     boolean eventInheritance = true;
     boolean ignoreGeneratedIndex;
     boolean strictMethodVerification;
@@ -113,6 +115,7 @@ public class EventBusBuilder {
      * exclude subscriber classes from this check. Also disables checks for method modifiers (public, not static nor
      * abstract).
      */
+    // TODO: 2018/5/24 订阅方法是以onevent开头的时候 调用此方法跳过名字的验证
     public EventBusBuilder skipMethodVerificationFor(Class<?> clazz) {
         if (skipMethodVerificationForClasses == null) {
             skipMethodVerificationForClasses = new ArrayList<>();

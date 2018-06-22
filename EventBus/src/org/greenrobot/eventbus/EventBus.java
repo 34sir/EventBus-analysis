@@ -77,6 +77,8 @@ public class EventBus {
     private final Logger logger;
 
     /** Convenience singleton for apps using a process-wide EventBus instance. */
+
+    // TODO: 2018/5/24 单例模式 双重检验
     public static EventBus getDefault() {
         EventBus instance = defaultInstance;
         if (instance == null) {
@@ -104,19 +106,31 @@ public class EventBus {
      * Creates a new EventBus instance; each instance is a separate scope in which events are delivered. To use a
      * central bus, consider {@link #getDefault()}.
      */
+
+    // TODO: 2018/5/24 构造方法不是私有的 则表明可以存在多个EventBus
     public EventBus() {
         this(DEFAULT_BUILDER);
     }
 
     EventBus(EventBusBuilder builder) {
         logger = builder.getLogger();
+        // TODO: 2018/5/24 以event为key 订阅列表(Subscription)为value 事件发送之后以此hashmap寻找订阅者
         subscriptionsByEventType = new HashMap<>();
+
+        // TODO: 2018/5/24 订阅者类为key，event事件类为value，在进行register或unregister操作的时候，会操作这个map
         typesBySubscriber = new HashMap<>();
+
+        // TODO: 2018/5/24 保存粘性事件 
         stickyEvents = new ConcurrentHashMap<>();
+        
         mainThreadSupport = builder.getMainThreadSupport();
+
+        // TODO: 2018/5/24  以下3个poster用来处理粘性事件
         mainThreadPoster = mainThreadSupport != null ? mainThreadSupport.createPoster(this) : null;
         backgroundPoster = new BackgroundPoster(this);
         asyncPoster = new AsyncPoster(this);
+
+        // TODO: 2018/5/24 以下利用它建造者对eventbus进行配置
         indexCount = builder.subscriberInfoIndexes != null ? builder.subscriberInfoIndexes.size() : 0;
         subscriberMethodFinder = new SubscriberMethodFinder(builder.subscriberInfoIndexes,
                 builder.strictMethodVerification, builder.ignoreGeneratedIndex);
@@ -139,6 +153,7 @@ public class EventBus {
      */
     public void register(Object subscriber) {
         Class<?> subscriberClass = subscriber.getClass();
+        // TODO: 2018/5/24 根据注册的类寻找类中绑定的方法
         List<SubscriberMethod> subscriberMethods = subscriberMethodFinder.findSubscriberMethods(subscriberClass);
         synchronized (this) {
             for (SubscriberMethod subscriberMethod : subscriberMethods) {
@@ -148,12 +163,14 @@ public class EventBus {
     }
 
     // Must be called in synchronized block
+    // TODO: 2018/6/22 此方法的核心 将所有含@Subscribe注解的订阅方法最终保存在subscriptionsByEventType中
     private void subscribe(Object subscriber, SubscriberMethod subscriberMethod) {
         Class<?> eventType = subscriberMethod.eventType;
         Subscription newSubscription = new Subscription(subscriber, subscriberMethod);
         CopyOnWriteArrayList<Subscription> subscriptions = subscriptionsByEventType.get(eventType);
         if (subscriptions == null) {
             subscriptions = new CopyOnWriteArrayList<>();
+            // TODO: 2018/6/22 subscriptionsByEventType是一个map key是eventType value是subscriptions 
             subscriptionsByEventType.put(eventType, subscriptions);
         } else {
             if (subscriptions.contains(newSubscription)) {
@@ -164,7 +181,9 @@ public class EventBus {
 
         int size = subscriptions.size();
         for (int i = 0; i <= size; i++) {
+            // TODO: 2018/6/22 判断订阅的方法的优先级 优先级高的排在subscriptions的前面 
             if (i == size || subscriberMethod.priority > subscriptions.get(i).subscriberMethod.priority) {
+                // TODO: 2018/6/22 newSubscription包含newSubscription和newSubscription
                 subscriptions.add(i, newSubscription);
                 break;
             }
@@ -173,10 +192,12 @@ public class EventBus {
         List<Class<?>> subscribedEvents = typesBySubscriber.get(subscriber);
         if (subscribedEvents == null) {
             subscribedEvents = new ArrayList<>();
+            // TODO: 2018/6/22  subscriptions 所有的eventType列表 在isRegister()中使用 判断这个subscriber是否已经被注册过
             typesBySubscriber.put(subscriber, subscribedEvents);
         }
         subscribedEvents.add(eventType);
 
+        // TODO: 2018/6/22 判断订阅方式是否是粘性订阅
         if (subscriberMethod.sticky) {
             if (eventInheritance) {
                 // Existing sticky events of all subclasses of eventType have to be considered.
@@ -202,6 +223,7 @@ public class EventBus {
         if (stickyEvent != null) {
             // If the subscriber is trying to abort the event, it will fail (event is not tracked in posting state)
             // --> Strange corner case, which we don't take care of here.
+            // TODO: 2018/6/22 发送粘性事件
             postToSubscription(newSubscription, stickyEvent, isMainThread());
         }
     }
@@ -252,8 +274,10 @@ public class EventBus {
 
     /** Posts the given event to the event bus. */
     public void post(Object event) {
+        // TODO: 2018/6/22  currentPostingThreadState是ThreadLocal类型 存储了PostingThreadState PostingThreadState中包含了一个eventQueue和其他一些标志位
         PostingThreadState postingState = currentPostingThreadState.get();
         List<Object> eventQueue = postingState.eventQueue;
+        // TODO: 2018/6/22 将event保存在eventQueue
         eventQueue.add(event);
 
         if (!postingState.isPosting) {
@@ -264,6 +288,7 @@ public class EventBus {
             }
             try {
                 while (!eventQueue.isEmpty()) {
+                    // TODO: 2018/6/22 看意思就是防止重复发送事件
                     postSingleEvent(eventQueue.remove(0), postingState);
                 }
             } finally {
@@ -376,13 +401,18 @@ public class EventBus {
     }
 
     private void postSingleEvent(Object event, PostingThreadState postingState) throws Error {
+        // TODO: 2018/6/22 获取事件的class 所有事件的class对应的订阅者列表在register的时候已经保存了
         Class<?> eventClass = event.getClass();
+        // TODO: 2018/6/22 根据事件的Class找到订阅者的标志状态
         boolean subscriptionFound = false;
+        // TODO: 2018/6/22 eventInheritance 此标志简单的讲就是是否考虑事件的继承性 如果是true则需要找到事件所有父类和所有实现的接口
         if (eventInheritance) {
+            // TODO: 2018/6/22 取出Event的父类和接口的class列表
             List<Class<?>> eventTypes = lookupAllEventTypes(eventClass);
             int countTypes = eventTypes.size();
             for (int h = 0; h < countTypes; h++) {
                 Class<?> clazz = eventTypes.get(h);
+                // TODO: 2018/6/22 基础要复习了 此处相当于 subscriptionFound=subscriptionFound|postSingleEventForEventType(event, postingState, clazz)
                 subscriptionFound |= postSingleEventForEventType(event, postingState, clazz);
             }
         } else {
@@ -402,6 +432,7 @@ public class EventBus {
     private boolean postSingleEventForEventType(Object event, PostingThreadState postingState, Class<?> eventClass) {
         CopyOnWriteArrayList<Subscription> subscriptions;
         synchronized (this) {
+            // TODO: 2018/6/22 根据Event类型从subscriptionsByEventType中取出对应的subscriptions
             subscriptions = subscriptionsByEventType.get(eventClass);
         }
         if (subscriptions != null && !subscriptions.isEmpty()) {
@@ -426,12 +457,15 @@ public class EventBus {
         return false;
     }
 
+    // TODO: 2018/6/22 此方法中区分处理事件的线程
     private void postToSubscription(Subscription subscription, Object event, boolean isMainThread) {
         switch (subscription.subscriberMethod.threadMode) {
             case POSTING:
+                // TODO: 2018/6/22 订阅者方法将在发布事件所在的线程中被调用 默认的线程模式
                 invokeSubscriber(subscription, event);
                 break;
             case MAIN:
+                // TODO: 2018/6/22 如果是主线程那就直接调用 否则加入队列中 后续通过handler去发送一个消息 具体逻辑在HandlerPoster中
                 if (isMainThread) {
                     invokeSubscriber(subscription, event);
                 } else {
@@ -439,6 +473,7 @@ public class EventBus {
                 }
                 break;
             case MAIN_ORDERED:
+                // TODO: 2018/6/22 此种模式下事件处理会按一定的顺序执行 先发布的先处理完；区别与MAIN的模式下 处理事件的时候发布另一个事件 那么第二个事件会先于第一个事件处理
                 if (mainThreadPoster != null) {
                     mainThreadPoster.enqueue(subscription, event);
                 } else {
@@ -448,12 +483,16 @@ public class EventBus {
                 break;
             case BACKGROUND:
                 if (isMainThread) {
+                    // TODO: 2018/6/22 是ui线程放入后台的队列 通过线程池调用
                     backgroundPoster.enqueue(subscription, event);
                 } else {
+                    // TODO: 2018/6/22 不是ui线程直接反射调用
                     invokeSubscriber(subscription, event);
                 }
                 break;
             case ASYNC:
+                // TODO: 2018/6/22  与BACKGROUND的逻辑类似，将任务加入到后台的一个队列，最终由Eventbus中的一个线程池去调用
+                // 与BACKGROUND的区别是 ASYNC是异步 而BACKGROUND是同步
                 asyncPoster.enqueue(subscription, event);
                 break;
             default:
@@ -463,6 +502,7 @@ public class EventBus {
 
     /** Looks up all Class objects including super classes and interfaces. Should also work for interfaces. */
     private static List<Class<?>> lookupAllEventTypes(Class<?> eventClass) {
+        // TODO: 2018/6/22 eventTypesCache缓存 防止重复调用getClass方法 影响性能 
         synchronized (eventTypesCache) {
             List<Class<?>> eventTypes = eventTypesCache.get(eventClass);
             if (eventTypes == null) {
@@ -543,7 +583,9 @@ public class EventBus {
     /** For ThreadLocal, much faster to set (and get multiple values). */
     final static class PostingThreadState {
         final List<Object> eventQueue = new ArrayList<>();
+        // TODO: 2018/6/22 防止方法多次调用 
         boolean isPosting;
+        // TODO: 2018/6/22 判断是否是ui线程 
         boolean isMainThread;
         Subscription subscription;
         Object event;

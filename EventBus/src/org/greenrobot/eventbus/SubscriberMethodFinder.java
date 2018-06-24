@@ -185,6 +185,7 @@ class SubscriberMethodFinder {
                         Class<?> eventType = parameterTypes[0];
                         if (findState.checkAdd(method, eventType)) {
                             ThreadMode threadMode = subscribeAnnotation.threadMode();
+                            // TODO: 2018/6/24 将方法名，threadMode，优先级，是否为sticky方法封装为SubscriberMethod对象，添加到subscriberMethods列表中 
                             findState.subscriberMethods.add(new SubscriberMethod(method, eventType, threadMode,
                                     subscribeAnnotation.priority(), subscribeAnnotation.sticky()));
                         }
